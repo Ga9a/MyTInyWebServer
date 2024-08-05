@@ -76,7 +76,7 @@ void Buffer::Release_Buff(size_t len)
 }
 
 // 返回指向可写入部分的指针
-char* Buffer::_Begin_Write_Ptr()
+char* Buffer::Begin_Write_Ptr()
 {
     return _Begin_Ptr() + _writep;
 }
@@ -118,7 +118,7 @@ void  Buffer::Add(const char* str, size_t len)
 {
     assert(str);
     _Length_Guard(len);
-    std::copy(str,str+len,_Begin_Write_Ptr());//将str的内容拷贝到缓冲区中
+    std::copy(str,str+len,Begin_Write_Ptr());//将str的内容拷贝到缓冲区中
     _writep += len;
 }
 

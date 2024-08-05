@@ -26,6 +26,7 @@ class Buffer
     void Update_Readp(size_t len);//更新读取指针
     void Update_Readp(const char* end);//更新读取指针
     char* Begin_Read_Ptr(); //返回指向可读部分的指针
+    char* Begin_Write_Ptr();//返回指向可写入部分的指针
 
     //释放缓冲区
     void Release_All_Buff();
@@ -41,7 +42,7 @@ class Buffer
     size_t _Prepared_Size() const; //返回已经被读写过的空间，即预备好可以用作写入的部分
     void _Dilatation(size_t len); //扩展缓冲区大小
     void _Length_Guard(size_t len); //检查缓冲区长度是否足够,并调整
-    char* _Begin_Write_Ptr();//返回指向可写入部分的指针
+    
     
 
     private:

@@ -1,6 +1,6 @@
 #include "../sqlpool/sql_pool.hpp"
 
-const int timeout = 3;//三秒超时连接数据库
+unsigned int timeout = 5; // 设置连接超时时间为5秒
 
 SQLPool::SQLPool()
 {};
@@ -51,39 +51,35 @@ void SQLPool::ReleaseConn(int& id,MYSQL *mysql)
     }
 }
 
-void SQLPool::Init(const char* host, const char* user, const char* passwd, const char* db, int port, int max_size)
-{
-    _max_conn=max_size;
-    _free_conn=max_size;
+void SQLPool::Init(const char* host, const char* user, const char* passwd, const char* db, int port, int max_size) {
+    _max_conn = max_size;
+    _free_conn = max_size;
 
-    if(!mysql_library_init(0,0,0))
-    {
-        //LOG_INFO("mysql library init.")
+    if (mysql_library_init(0, 0, 0) != 0) {
+        LOG_FATAL("mysql library init fail.");
+        throw std::runtime_error("mysql library init fail");
     }
-    else
-    {
-        LOG_FATAL("mysql library init fail.")
-    }
+
     std::unique_lock<std::mutex> lock(_mutex);
-    for (int i = 0; i < max_size; i++)
-    {
-        //LOG_INFO("mysql loop : %d.",i);
-        MYSQL *mysql = mysql_init(NULL);
-        if (mysql == NULL)
-        {
+
+    for (int i = 0; i < max_size; ++i) {
+        MYSQL* mysql = mysql_init(nullptr);
+        if (mysql == nullptr) {
             LOG_FATAL("mysql init error.");
-            exit(1);
+            throw std::runtime_error("mysql init error");
         }
-        //LOG_INFO("mysql init : %d.",i);
-        mysql_options(mysql,MYSQL_OPT_CONNECT_TIMEOUT,&timeout);
-        mysql_real_connect(mysql, host, user, passwd, db, port, 0,0);
-        if (mysql == NULL)
-        {
-            LOG_FATAL("mysql connect error.");
-            exit(1);
+
+
+        mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
+        if (!mysql_real_connect(mysql, host, user, passwd, db, port, nullptr, 0)) {
+            LOG_FATAL("mysql connect error: %s", mysql_error(mysql));
+            mysql_close(mysql); // 关闭连接以释放资源
+            throw std::runtime_error("mysql connect error");
         }
-        //LOG_INFO("mysql connect : %d.",i);
-        _conn_list.emplace_back(i,mysql);
+
+        _conn_list.emplace_back(i, mysql);
     }
+
     LOG_INFO("SQLPool Init Success.");
 }
+

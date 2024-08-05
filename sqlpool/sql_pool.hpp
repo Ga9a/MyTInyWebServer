@@ -26,7 +26,6 @@ class SQLPool
         }
 
         void Init(const char* host, const char* user, const char* passwd, const char* db, int port, int max_size);
-        int GetFreeConn(){return _free_conn;};
         MYSQL* GetConn(int &id); //获取连接
         void ReleaseConn(int& id,MYSQL *mysql); //释放连接
 

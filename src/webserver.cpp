@@ -30,7 +30,7 @@ WebServer::WebServer(int port,int pool_max_conn,const char* pool_host,const char
     LOG_INFO("Log Init Success.");
 
     auto sqlpool = SQLPool::GetInstance();
-    sqlpool->Init(_pool_host,_pool_user,_pool_password,_pool_database,_pool_port,pool_max_conn);// 初始化数据库连接池
+    sqlpool->Init(pool_host,pool_user,pool_password,pool_database,pool_port,pool_max_conn);// 初始化数据库连接池
 
     unique_ptr<Epoller> NewEpolloer = std::make_unique<Epoller>();
     _epoller = move(NewEpolloer); // epoll对象
@@ -190,7 +190,9 @@ void  WebServer::_FunWrite(HttpConnector *client_connector)//处理写任务
     long ret = -1;
     ret = client_connector->Write(status);
     if(!client_connector->Writeable_Size()) // 传输完成
+    {
         _Process(client_connector);
+    }
     else if(ret < 0)
     {
         //在写入操作中，如果不能立即写入所有数据且操作设置为非阻塞模式，则返回 EWOULDBLOCK。
@@ -221,7 +223,7 @@ void WebServer::Start()//主线程
     
     while(_statue.load())
     {
-        LOG_INFO("Listening ......")
+        //LOG_INFO("Listening ......")
         int event_cnt = _epoller->wait(_epoll_wait_MS);
         for(int i=0;i<event_cnt;i++)
         {

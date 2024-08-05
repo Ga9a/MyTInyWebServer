@@ -5,6 +5,7 @@
 #include<iomanip>
 #include<mutex>
 #include<functional>
+#include<regex>
 #include<fstream>
 #include<thread>
 #include<deque>
@@ -16,6 +17,7 @@
 #include<ctime>
 #include<algorithm>
 #include<sstream>
+#include<filesystem>
 #include<cstring>
 #include<chrono>
 #include<cassert>
@@ -30,6 +32,7 @@
 #include<sys/sendfile.h>
 #include<arpa/inet.h>
 #include<netinet/in.h>
+#include<unordered_set>
 #include<pthread.h>
 #include<memory>
 #include<set>

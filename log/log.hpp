@@ -24,6 +24,7 @@ enum LogLevel
 	INFO,
 	WARNING,
 	FATAL,
+    ERROR
 };
 
 enum Log_statue
@@ -87,3 +88,4 @@ string LogStr(const string& level,const string& message,const string& filename,l
 #define LOG_INFO(format, ...) do {LOG_BASE(INFO, format, ##__VA_ARGS__)} while(0);
 #define LOG_FATAL(format, ...) do {LOG_BASE(FATAL, format, ##__VA_ARGS__)} while(0);
 #define LOG_WARNING(format, ...) do {LOG_BASE(WARNING, format, ##__VA_ARGS__)} while(0);
+#define LOG_ERROR(format, ...) do {LOG_BASE(ERROR, format, ##__VA_ARGS__)} while(0);

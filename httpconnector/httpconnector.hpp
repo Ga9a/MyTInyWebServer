@@ -1,6 +1,8 @@
 #pragma once
 #include "../include/include.hpp"
 #include "../buffer/buffer.hpp"
+#include "httprequest.hpp"
+#include "httpresponse.hpp"
 
 class HttpConnector
 {
@@ -15,13 +17,16 @@ class HttpConnector
 
         void Close();
         bool Process();//业务逻辑处理
+        void ClearWriteBuffer(){_write_buffer.Release_All_Buff();}
+
         static std::atomic<uint16_t> user_cnt;//当前连接器上的用户数量
 
-        //为静态函数提供接口
+        //提供接口
         int GetFd() const{return _fd;};
         sockaddr_in GetAddr() const{return _addr;};
         const char* GetIp() const{return inet_ntoa(_addr.sin_addr);};
         int GetPort() const{return ntohs(_addr.sin_port);};
+        std::shared_ptr<char> ReadFileToSharedCharArray(const std::string& filePath, std::size_t& fileSize);
 
         
 
@@ -34,6 +39,9 @@ class HttpConnector
         Buffer _write_buffer;//写缓冲区
         iovec _iov[2];//写缓冲区辅助
         size_t _iov_size;//写缓冲区辅助大小
+
+        HttpRequest _request;//请求
+        HttpResponse _reponse;//回复
 
 
 };

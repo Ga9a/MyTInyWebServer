@@ -61,7 +61,7 @@ void Log::LogThread()
         {
             std::cout << str << std::endl; //输出到控制台
             std::unique_lock<std::mutex> locker(_bqMutex);
-            _logFile << str << std::endl; //输出到文件
+            //_logFile << str << std::endl; //输出到文件
         }
 
         // std::unique_lock<std::mutex> locker(_buffMutex);

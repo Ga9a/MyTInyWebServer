@@ -93,7 +93,7 @@ bool HttpConnector::Process() // 业务逻辑处理
         return false;//没有可读数据，说明需要写
     }else{
 
-        //test for http GET
+        // test for http GET
         // _read_buffer.print();
         // string str;
         // _read_buffer.Release_All_Buff(str);
@@ -104,13 +104,50 @@ bool HttpConnector::Process() // 业务逻辑处理
         // _iov[0].iov_base = head;
         // _iov[0].iov_len = strlen(head);
         // _iov[1].iov_base = _write_buffer.Begin_Read_Ptr();
-        // _iov[1].iov_len = _write_buffer.Readable_Size();
+        // _iov[1].iov_len = _write_         buffer.Readable_Size();
 
         // _iov_size=2;
-        //test end
+        // test end
+        _request.Init();
+        _request.Read_Buff(_read_buffer);//读入解析请求
+        _read_buffer.Release_All_Buff();//清空读缓冲区
+        
+        _reponse.Init(_request);
+        _reponse.Head_Write_Buff(_write_buffer);//写回复头
+        _write_buffer.print();
 
 
+        std::size_t fileSize = 0;
+        auto fileContent = ReadFileToSharedCharArray(_reponse.Get_Path(), fileSize);
+
+        // std::cout.write(fileContent.get(), fileSize);
+        // std::cout << std::endl;
+
+
+
+        _iov[0].iov_base = _write_buffer.Begin_Read_Ptr();
+        _iov[0].iov_len = _write_buffer.Readable_Size();
+        _iov[1].iov_base = fileContent.get();
+        _iov[1].iov_len = fileSize;
+        _iov_size=2;
 
         return true;//不然就是需要读
     } 
+}
+
+std::shared_ptr<char> HttpConnector::ReadFileToSharedCharArray(const std::string& filePath, std::size_t& fileSize) {
+    std::ifstream file(filePath, std::ios::in | std::ios::binary | std::ios::ate);
+    LOG_INFO("filePath = %s",filePath.c_str());
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open file: " + filePath);
+    }
+    // 获取文件大小
+    fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::shared_ptr<char> buffer(new char[fileSize], std::default_delete<char[]>());
+    file.read(buffer.get(), fileSize);
+    // 关闭文件
+    file.close();
+    
+    return buffer;
 }
