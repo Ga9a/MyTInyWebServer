@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(MyTinyWebServer)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall")
 
 # 添加可执行文件输出路径
@@ -17,6 +17,9 @@ set(SOURCES
     src/epoller.cpp
     src/httpconnector.cpp
     src/buffer.cpp
+    src/httprequest.cpp
+    src/httpresponse.cpp
+    src/httpdata.cpp
 )
 
 # 头文件目录
