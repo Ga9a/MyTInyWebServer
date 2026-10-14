@@ -1,9 +1,9 @@
 #include "log.hpp"
 
-int Log::_statue; //日志状态
-mutex Log::_bqMutex;//缓冲区锁
-unique_ptr<BlockDeque<string>> Log::_bq;//缓冲区阻塞队列
-ofstream Log::_logFile;//日志文件 
+int Log::_statue; //Logging state.
+mutex Log::_bqMutex;//Buffer mutex.
+unique_ptr<BlockDeque<string>> Log::_bq;//Blocking log buffer.
+ofstream Log::_logFile;//Log stream.
 
 static std::string getTimestamp() {
     auto now = std::chrono::system_clock::now();
@@ -17,36 +17,36 @@ static std::string getTimestamp() {
 
 Log::Log()
 {
-    _bq=nullptr; //初始化缓冲区
-    _statue=log_close; //初始化状态
-    //_logFile.open(_LogFileName, std::ios::app); // 打开文件以追加模式
+    _bq=nullptr; //Initialize the log queue.
+    _statue=log_close; //Initialize logging state.
+    //_logFile.open(_LogFileName, std::ios::app); // Open the log file for append.
 }
 
 Log::~Log()
 {
-    _statue=log_close; //关闭日志
-    _bq->Close(); //关闭缓冲区
+    _statue=log_close; //Disable logging.
+    _bq->Close(); //Close the queue.
 }
 
 void Log::Init(const size_t& cap)
 {
-    _statue=log_open;//日志状态
+    _statue=log_open;//Logging state.
 
     unique_ptr<BlockDeque<string>> newDeque(new BlockDeque<std::string>(cap));
-    _bq = move(newDeque);//初始化缓冲区阻塞队列
+    _bq = std::move(newDeque);//Initialize the blocking queue.
 
-    _LogFileName=log_path_head+getTimestamp()+"_server_log.txt"; //初始化文件名
+    _LogFileName=log_path_head+getTimestamp()+"_server_log.txt"; //Set the log filename.
     _logFile.open(_LogFileName, std::ios::app);
 
-    unique_ptr<thread> NewThread(new thread(LogThread)); //创建日志线程
-    _threadPtr = move(NewThread);
+    unique_ptr<thread> NewThread(new thread(LogThread)); //Start the logging worker.
+    _threadPtr = std::move(NewThread);
 
-    _threadPtr->detach(); //分离线程
+    _threadPtr->detach(); //Detach the worker.
 
-    //输入换页
+    //Write a log separator.
     std::unique_lock<std::mutex> locker(_bqMutex);
     _logFile << std::endl;
-    _logFile << "-------------------------------------------------------------------------------------" << std::endl; //输出到文件
+    _logFile << "-------------------------------------------------------------------------------------" << std::endl; //Write to the log file.
 
 }
 
@@ -57,11 +57,11 @@ void Log::LogThread()
         if(_statue==log_close)
             return;
         string str="";
-        if(_bq->pop_front(str)) //从阻塞队列中取出一个日志
+        if(_bq->pop_front(str)) //Read the next queued message.
         {
-            std::cout << str << std::endl; //输出到控制台
+            std::cout << str << std::endl; //Write to standard output.
             std::unique_lock<std::mutex> locker(_bqMutex);
-            //_logFile << str << std::endl; //输出到文件
+            //_logFile << str << std::endl; //Write to the log file.
         }
 
         // std::unique_lock<std::mutex> locker(_buffMutex);
@@ -70,21 +70,21 @@ void Log::LogThread()
         //     std::cout << "wait..."<<std::endl;
         //     if(_statue==log_close)
         //         return;
-        //     _CVbuff.wait(locker); //等待缓冲区有数据
+        //     _CVbuff.wait(locker); //Wait for queued data.
         // }
         // std::string str = _buff.front();
-        // _buff.pop(); //从队列中取出一个日志
-        
+        // _buff.pop(); //Pop the next log message.
+
     }
 }
 
 void Log::Write(const string& msg)
 {
-    
-    _bq->push_back(msg); //将日志放入缓冲区
-    // std::unique_lock<std::mutex> locker(_buffMutex); //加锁
+
+    _bq->push_back(msg); //Enqueue the log message.
+    // std::unique_lock<std::mutex> locker(_buffMutex); //Acquire the mutex.
     // _buff.push(msg);
-    // _CVbuff.notify_one(); //通知日志线程
+    // _CVbuff.notify_one(); //Notify the logging worker.
 }
 
 void Log::Flush()
@@ -96,11 +96,11 @@ void Log::Flush()
 
 string LogStr(const string& level,const string& message,const string& filename,long line)
 {
-    //日志格式:[日志级别][时间戳][线程号](文件名:行号) 日志内容
+    //Log format: [level][time][thread](file:line) message.
     time_t t;
     time(&t);
-    std::string timeStr = ctime(&t);   
-    // 去掉 ctime 返回值中的换行符
+    std::string timeStr = ctime(&t);
+    // Remove the trailing newline from ctime.
     if (!timeStr.empty() && timeStr.back() == '\n') {
         timeStr.pop_back();
     }

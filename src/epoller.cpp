@@ -5,7 +5,7 @@ Epoller::Epoller(uint32_t maxEvent):_epollFd(epoll_create(512)),_events(maxEvent
     LOG_INFO("Epoller init success,size = %ld", _events.size());
 }
 
-Epoller::~Epoller() 
+Epoller::~Epoller()
 {
     close(_epollFd);
 }
@@ -18,7 +18,7 @@ int Epoller::addFd(int fd, uint32_t events) {
     if (ret != 0) {
         LOG_WARNING("epoll_ctl add fd = %d failed", fd);
     }
-    return 0==ret; //返回1表示成功,0表示失败
+    return 0==ret; //Return 1 on success, 0 on failure.
 }
 
 int Epoller::modFd(int fd, uint32_t events) {
@@ -29,7 +29,7 @@ int Epoller::modFd(int fd, uint32_t events) {
     if (ret != 0) {
         LOG_WARNING("epoll_ctl mod fd = %d failed", fd);
     }
-    return 0==ret; //返回1表示成功,0表示失败
+    return 0==ret; //Return 1 on success, 0 on failure.
 }
 
 int Epoller::delFd(int fd) {
@@ -40,22 +40,22 @@ int Epoller::delFd(int fd) {
     if (ret != 0) {
         LOG_WARNING("epoll_ctl del fd = %d failed", fd);
     }
-    return 0==ret; //返回1表示成功,0表示失败
+    return 0==ret; //Return 1 on success, 0 on failure.
 }
 
 int Epoller::wait(int timeoutMs) {
     return epoll_wait(_epollFd, &_events[0], static_cast<int>(_events.size()), timeoutMs);
-    //第一个参数是epoll的文件描述符，第二个参数是监听的文件描述符集合，即数组第一个元素地址，第三个参数是监听文件描述符集合的大小，第四个参数是超时时间
+    //Wait for events using the epoll descriptor, output array, capacity, and timeout.
 }
 
 uint32_t Epoller::GetEvents(size_t index)
 {
-    assert(index < _events.size() && index >= 0);
+    assert(index < _events.size());
     return _events[index].events;
 }
 
 int Epoller::GetFd(size_t index)
 {
-    assert(index < _events.size() && index >= 0);
+    assert(index < _events.size());
     return _events[index].data.fd;
 }
