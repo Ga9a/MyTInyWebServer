@@ -11,7 +11,7 @@ extern const char* CRLF ;
 extern const std::string SRC_DIR ;
 extern const std::string HOME_PAGE ;
 
-// 定义 HTTP_CODE 枚举
+// HTTP response states.
 enum HTTP_CODE {
     NO_REQUEST,
     BAD_REQUEST,
@@ -22,10 +22,10 @@ enum HTTP_CODE {
     CLOSED_CONNECTION
 };
 
-// 状态码到状态描述的映射
+// HTTP status descriptions.
 extern std::unordered_map<HTTP_CODE, std::string> statusDescriptions;
 
-// 获取状态描述
+// Look up the status description.
 std::string GetStatusDescription(HTTP_CODE code);
 
 #endif // HTTPDATA_HPP

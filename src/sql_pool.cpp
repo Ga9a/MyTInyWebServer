@@ -1,17 +1,14 @@
 #include "../sqlpool/sql_pool.hpp"
 
-unsigned int timeout = 5; // 设置连接超时时间为5秒
+unsigned int timeout = 5; // Use a five-second database connection timeout.
 
 SQLPool::SQLPool()
 {};
 
 SQLPool::~SQLPool()
 {
+    for(auto i:_conn_list) mysql_close(i.second);
     mysql_library_end();
-    for(auto i:_conn_list)
-    {
-        mysql_close(i.second);
-    }
 };
 
 MYSQL* SQLPool::GetConn(int &id)
@@ -28,7 +25,7 @@ MYSQL* SQLPool::GetConn(int &id)
     _conn_list.pop_front();
     _free_conn--;
     LOG_INFO("get conn id = %d.",id)
-    return mysql;    
+    return mysql;
 }
 
 void SQLPool::ReleaseConn(int& id,MYSQL *mysql)
@@ -73,7 +70,7 @@ void SQLPool::Init(const char* host, const char* user, const char* passwd, const
         mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
         if (!mysql_real_connect(mysql, host, user, passwd, db, port, nullptr, 0)) {
             LOG_FATAL("mysql connect error: %s", mysql_error(mysql));
-            mysql_close(mysql); // 关闭连接以释放资源
+            mysql_close(mysql); // Release the failed connection.
             throw std::runtime_error("mysql connect error");
         }
 

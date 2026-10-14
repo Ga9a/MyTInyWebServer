@@ -1,24 +1,24 @@
 #pragma once
 #include "../include/include.hpp"
-#include "../outheader/mysql.h"
+#include <mysql.h>
 
 using std::condition_variable;
 using std::mutex;
 
 class SQLPool
 {
-    //单例模式
+    //Singleton.
     private:
-        //禁用拷贝和“=”复制
+        //Disable copying and assignment.
         SQLPool(const SQLPool& sq)= delete;
         SQLPool& operator=(const SQLPool& sq)= delete;
 
-        //私有化构造析构函数
+        //Restrict construction and destruction.
         SQLPool();
         ~SQLPool();
-    
+
     public:
-        //获取单例对象,懒汉模式局部不需要加锁
+        //Function-local static initialization is thread safe.
         static SQLPool * GetInstance()
         {
             static SQLPool SQLp;
@@ -26,8 +26,8 @@ class SQLPool
         }
 
         void Init(const char* host, const char* user, const char* passwd, const char* db, int port, int max_size);
-        MYSQL* GetConn(int &id); //获取连接
-        void ReleaseConn(int& id,MYSQL *mysql); //释放连接
+        MYSQL* GetConn(int &id); //Acquire a database connection.
+        void ReleaseConn(int& id,MYSQL *mysql); //Release a database connection.
 
     private:
 
@@ -40,9 +40,9 @@ class SQLPool
         int _max_conn;
         int _free_conn;
 
-        condition_variable _CVpool;//条件变量
-        mutex _mutex;//互斥锁
-        std::list<std::pair<int,MYSQL *>> _conn_list; //连接池
-        std::set<int> used_id;//被使用的mysql序号，防止放入自定义的MYSQL 
+        condition_variable _CVpool;//Availability condition.
+        mutex _mutex;//Pool mutex.
+        std::list<std::pair<int,MYSQL *>> _conn_list; //Database connection pool.
+        std::set<int> used_id;//Track borrowed connection IDs to reject foreign handles.
 
 };

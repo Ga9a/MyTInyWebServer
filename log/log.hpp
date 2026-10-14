@@ -10,13 +10,13 @@ using std::unique_lock;
 using std::condition_variable;
 using std::ofstream;
 
-const string log_path_head="../out/log/";//日志文件路径
+const string log_path_head="../out/log/";//Log directory.
 
 
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
-#define RELATIVE_PATH(file) (std::string(file).substr(std::string(SOURCE_ROOT).length() + 1))//获取相对路径
+#define RELATIVE_PATH(file) (std::string(file).substr(std::string(SOURCE_ROOT).length() + 1))//Strip the source root prefix.
 
 
 enum LogLevel
@@ -36,7 +36,7 @@ enum Log_statue
 class Log
 {
     public:
-    //c++11局部懒汉不用加锁
+    //Function-local singleton initialization is thread safe.
     static Log* GetInstance()
     {
         static Log log;
@@ -44,30 +44,30 @@ class Log
     }
 
     private:
-    // 私有构造函数
+    // Private constructor.
     Log();
     ~Log();
-    // 禁用拷贝构造函数和赋值运算符
+    // Disable copying and assignment.
     Log(const Log&) = delete;
     Log& operator=(const Log&) = delete;
 
     public:
     void Write(const string& msg);
-    void Init(const size_t &cap); // 初始化
+    void Init(const size_t &cap); // Initialize request state.
     void Flush();
-    static void LogThread();// 日志线程
+    static void LogThread();// Logging worker.
     bool OpenCheck()
     {
         return _statue == log_open;
     };
 
 private:
-    static int _statue;                // 日志状态
-    unique_ptr<thread> _threadPtr;     // 线程指针
-    static unique_ptr<BlockDeque<string>> _bq;//阻塞队列
-    static mutex _bqMutex;//阻塞队列锁
-    static ofstream _logFile;//日志文件
-    string _LogFileName;//日志文件名
+    static int _statue;                // Logging state.
+    unique_ptr<thread> _threadPtr;     // Logging thread.
+    static unique_ptr<BlockDeque<string>> _bq;//Blocking log queue.
+    static mutex _bqMutex;//Log queue mutex.
+    static ofstream _logFile;//Log stream.
+    string _LogFileName;//Log filename.
 };
 
 string LogStr(const string& level,const string& message,const string& filename,long line);

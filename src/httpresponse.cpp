@@ -27,7 +27,7 @@ void HttpResponse::Head_Write_Buff(Buffer &buffer) {
     buffer.Release_All_Buff();
 
 #ifdef DEBUG
-        /// 文件名
+        /// Debug file path.
         std::string fileName = "../wwwroot/index.html";
         std::ifstream file(fileName);
 
@@ -39,16 +39,16 @@ void HttpResponse::Head_Write_Buff(Buffer &buffer) {
         fileContent << file.rdbuf();
         std::string content = fileContent.str();
 
-        // 构建 HTTP 响应
+        // Build a debug HTTP response.
         std::string response = "HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(content.length()) + "\r\n\r\n" + content;
         buffer.Add(response);
 #endif
-        buffer.Add(move(_statue_line+"\r\n"+_headers+"\r\n"));
+        buffer.Add(std::move(_statue_line+"\r\n"+_headers));
     }
 
 void HttpResponse::_Handle_Path(HttpRequest &request)
 {
-    //查看是否是特殊请求
+    //Handle application routes.
     if(request.Is_Tasks())
     {
         if(tasks.find("/login")!=tasks.end())
@@ -63,13 +63,13 @@ void HttpResponse::_Handle_Path(HttpRequest &request)
     _path = request.Get_Path();
 }
 
-void HttpResponse::_Init_Headers_Map(const HttpRequest &request)
+void HttpResponse::_Init_Headers_Map(const HttpRequest &)
 {
      switch(_code)
         {
             case FILE_REQUEST:
                 _headers_map["Content-Type"] = "text/html";
-                //TODO 支持更多文件种类
+                //TODO: Add more MIME types.
                 break;
             case BAD_REQUEST:
                 _headers_map["Content-Type"] = "text/html";
@@ -80,18 +80,19 @@ void HttpResponse::_Init_Headers_Map(const HttpRequest &request)
                 break;
         }
 
-        //TODO 支持更多文件种类
+        //TODO: Add more MIME types.
         Set_ContentLength_From_File(_path);
         _headers_map["Date"] = _Generate_HttpDate();
 }
 
 std::string HttpResponse::_Generate_HttpDate() {
-// 获取当前时间
+// Get the current time.
 std::time_t t = std::time(nullptr);
-std::tm tm = *std::gmtime(&t);
-// 格式化时间为 HTTP 日期字符串
+std::tm tm{};
+gmtime_r(&t, &tm);
+// Format the HTTP date.
 std::ostringstream oss;
-oss << "Date: "<< std::put_time(&tm, "%a, %d %b %Y %H:%M:%S GMT");
+oss << std::put_time(&tm, "%a, %d %b %Y %H:%M:%S GMT");
 return oss.str();
 }
 
@@ -109,83 +110,38 @@ void HttpResponse::Set_ContentLength_From_File(const std::string &filePath)
 }
 
 bool HttpResponse::_Login(HttpRequest &request) {
-    int id;
-    bool result = true;
-    MYSQL* mysql = SQLPool::GetInstance()->GetConn(id); //获取连接
-    if (!mysql) {
-        LOG_ERROR("Failed to get MySQL connection");
+    const std::string username = request.Select_Form("username");
+    const std::string password = request.Select_Form("pwd");
+    if (username.empty() || username.size() > 50 || password.empty() || password.size() > 50)
         return false;
-    }
-
-    std::string username = request.Select_Form("username");
-    std::string password = request.Select_Form("pwd");
-
-    // Prepare statement to prevent SQL injection
-    std::string query = "SELECT * FROM user WHERE username = ?";
+    int id = -1;
+    MYSQL* mysql = SQLPool::GetInstance()->GetConn(id);
+    if (!mysql) return false;
     MYSQL_STMT* stmt = mysql_stmt_init(mysql);
-    if (!stmt) {
-        LOG_ERROR("Failed to initialize MySQL statement");
-        SQLPool::GetInstance()->ReleaseConn(id, mysql);
-        return false;
-    }
-
-    if (mysql_stmt_prepare(stmt, query.c_str(), query.size()) != 0) {
-        LOG_ERROR("MySQL statement prepare failed: %s", mysql_stmt_error(stmt));
-        mysql_stmt_close(stmt);
-        SQLPool::GetInstance()->ReleaseConn(id, mysql);
-        return false;
-    }
-
-    MYSQL_BIND bind[1];
-    memset(bind, 0, sizeof(bind));
-
-    bind[0].buffer_type = MYSQL_TYPE_STRING;
-    bind[0].buffer = const_cast<char*>(username.c_str());
-    bind[0].buffer_length = username.size();
-
-    if (mysql_stmt_bind_param(stmt, bind) != 0) {
-        LOG_ERROR("MySQL statement bind failed: %s", mysql_stmt_error(stmt));
-        mysql_stmt_close(stmt);
-        SQLPool::GetInstance()->ReleaseConn(id, mysql);
-        return false;
-    }
-
-    if (mysql_stmt_execute(stmt) != 0) {
-        LOG_ERROR("MySQL statement execute failed: %s", mysql_stmt_error(stmt));
-        mysql_stmt_close(stmt);
-        SQLPool::GetInstance()->ReleaseConn(id, mysql);
-        return false;
-    }
-
-    MYSQL_RES* res = mysql_stmt_result_metadata(stmt);
-    if (!res) {
-        LOG_ERROR("MySQL statement result metadata failed: %s", mysql_stmt_error(stmt));
-        mysql_stmt_close(stmt);
-        SQLPool::GetInstance()->ReleaseConn(id, mysql);
-        return false;
-    }
-
-    if (mysql_stmt_store_result(stmt) != 0) {
-        LOG_ERROR("MySQL statement store result failed: %s", mysql_stmt_error(stmt));
-        mysql_free_result(res);
-        mysql_stmt_close(stmt);
-        SQLPool::GetInstance()->ReleaseConn(id, mysql);
-        return false;
-    }
-
-    if (mysql_stmt_num_rows(stmt) == 0) {
-        LOG_WARNING("Username is not registered!");
-        result = false;
-    } else {
-        MYSQL_ROW row = mysql_fetch_row(res);
-        if (row && row[1] && password != row[1]) {
-            LOG_WARNING("Password is wrong!");
-            result = false;
+    bool authenticated = false;
+    if (stmt) {
+        const char* query = "SELECT passwd FROM user WHERE username = ? LIMIT 1";
+        MYSQL_BIND parameter{};
+        parameter.buffer_type = MYSQL_TYPE_STRING;
+        parameter.buffer = const_cast<char*>(username.data());
+        parameter.buffer_length = username.size();
+        char stored_password[256]{};
+        unsigned long length = 0;
+        MYSQL_BIND result{};
+        result.buffer_type = MYSQL_TYPE_STRING;
+        result.buffer = stored_password;
+        result.buffer_length = sizeof(stored_password);
+        result.length = &length;
+        if (mysql_stmt_prepare(stmt, query, std::strlen(query)) == 0 &&
+            mysql_stmt_bind_param(stmt, &parameter) == 0 &&
+            mysql_stmt_execute(stmt) == 0 &&
+            mysql_stmt_bind_result(stmt, &result) == 0 &&
+            mysql_stmt_store_result(stmt) == 0 &&
+            mysql_stmt_fetch(stmt) == 0 && length <= sizeof(stored_password)) {
+            authenticated = password == std::string(stored_password, length);
         }
+        mysql_stmt_close(stmt);
     }
-
-    mysql_free_result(res);
-    mysql_stmt_close(stmt);
     SQLPool::GetInstance()->ReleaseConn(id, mysql);
-    return result;
+    return authenticated;
 }

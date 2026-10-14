@@ -1,61 +1,61 @@
 #include "../buffer/buffer.hpp"
 
-// 构造函数，初始化_buffer，_readp，_writep
+// Initialize the buffer and its read/write cursors.
 Buffer::Buffer(size_t buff_size) : _buffer(buff_size),_readp(0),_writep(0) {
 }
 
-// 返回指向_buffer.begin()的指针
+// Return the start of the backing buffer.
 char* Buffer::_Begin_Ptr()
 {
     assert(_buffer.size() > 0);
     return &*_buffer.begin();
-}; 
+};
 
-//更新写入指针
+//Advance the write cursor.
 void Buffer::Update_Writep(size_t len)
 {
     _writep += len;
 }
 
-//更新读指针
+//Advance the read cursor.
 void Buffer::Update_Readp(size_t len)
 {
     assert(len <= Readable_Size());
     _readp += len;
 }
 
-//返回指向可读部分的指针
+//Return the read cursor.
 char* Buffer::Begin_Read_Ptr()
 {
     return _Begin_Ptr() + _readp;
 }
 
-//更新读指针
+//Advance the read cursor.
 void Buffer::Update_Readp(const char* end)
 {
     assert(Begin_Read_Ptr() <= end);
     Update_Readp(end-Begin_Read_Ptr());
 }
 
-// 返回可写入的大小
+// Return available writable capacity.
 size_t Buffer::_Writeable_Size() const
 {
     return _buffer.size() - _writep;
 }
 
-// 返回可读的大小
+// Return the readable byte count.
 size_t Buffer::Readable_Size() const
 {
     return _writep-_readp;
 }
 
-// 返回已准备好的大小
+// Return reusable consumed space.
 size_t Buffer::_Prepared_Size() const
 {
     return  _readp;
 }
 
-//释放缓冲区中所有数据
+//Clear all buffered data.
 void Buffer::Release_All_Buff()
 {
     bzero(&_buffer[0], _buffer.size());
@@ -63,7 +63,7 @@ void Buffer::Release_All_Buff()
     _writep = 0;
 }
 
-//释放缓冲区中所有数据
+//Clear all buffered data.
 void Buffer::Release_All_Buff(string &str)
 {
     str=string(Begin_Read_Ptr(),Readable_Size());
@@ -75,13 +75,13 @@ void Buffer::Release_Buff(size_t len)
     Update_Readp(len);
 }
 
-// 返回指向可写入部分的指针
+// Return the write cursor.
 char* Buffer::Begin_Write_Ptr()
 {
     return _Begin_Ptr() + _writep;
 }
 
-// 扩容函数，如果可写入的大小加上已准备好的大小大于等于要求长度，则不需要扩容，只需要调整大小；否则需要扩容
+// Compact consumed space if sufficient; otherwise grow the storage.
 void Buffer::_Dilatation(size_t len)
 {
     if(_Writeable_Size()+_Prepared_Size() >= len)
@@ -90,7 +90,7 @@ void Buffer::_Dilatation(size_t len)
         std::copy(_Begin_Ptr()+_readp,_Begin_Ptr()+_writep,_Begin_Ptr());
         _readp = 0;
         _writep = readable_size;
-        assert(readable_size == Readable_Size());        
+        assert(readable_size == Readable_Size());
     }
     else
     {
@@ -98,7 +98,7 @@ void Buffer::_Dilatation(size_t len)
     }
 }
 
-// 长度保护函数，如果可写入的大小小于要求长度，则调用扩容函数
+// Ensure sufficient writable space before appending.
 void Buffer::_Length_Guard(size_t len)
 {
     if(_Writeable_Size() < len)
@@ -106,31 +106,31 @@ void Buffer::_Length_Guard(size_t len)
     assert(_Writeable_Size() >= len);
 }
 
-// 添加字符串到缓冲区
+// Append a string.
 void  Buffer::Add(const string& str)
 {
     //
     Add(str.c_str(),str.size());
 }
 
-// 添加字符数组到缓冲区
+// Append a byte array.
 void  Buffer::Add(const char* str, size_t len)
 {
     assert(str);
     _Length_Guard(len);
-    std::copy(str,str+len,Begin_Write_Ptr());//将str的内容拷贝到缓冲区中
+    std::copy(str,str+len,Begin_Write_Ptr());//Copy bytes into the buffer.
     _writep += len;
 }
 
-// 从文件描述符中读取数据到缓冲区
+// Read bytes from a descriptor.
 ssize_t Buffer::Read_FD(int fd,bool& status)
 {
     char buff1[65535];
     char buff2[65535];
     iovec iov[3];
     const size_t writeable_size = _Writeable_Size();
-    
-    //分散读取提高效率
+
+    //Use scatter reads to fill available space efficiently.
 
     iov[0].iov_base = _Begin_Ptr() + _writep;
     iov[0].iov_len = writeable_size;
@@ -150,10 +150,12 @@ ssize_t Buffer::Read_FD(int fd,bool& status)
     }else
     {
         _writep = _buffer.size();
-        Add(buff1,len-writeable_size);
-        Add(buff2,len-writeable_size);
+        const size_t overflow = static_cast<size_t>(len) - writeable_size;
+        const size_t first = std::min(overflow, sizeof(buff1));
+        Add(buff1, first);
+        if (overflow > first) Add(buff2, overflow - first);
         status=true;
     }
     return len;
-    
+
 }

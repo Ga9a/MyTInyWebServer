@@ -9,7 +9,7 @@
         } \
     } while (0);
 
-// 类外初始化静态成员
+// Define the static singleton.
 WebServer* WebServer::_ws = nullptr;
 
 WebServer::WebServer(int port,int pool_max_conn,const char* pool_host,const char* pool_user,
@@ -17,36 +17,37 @@ WebServer::WebServer(int port,int pool_max_conn,const char* pool_host,const char
                     const int max_thread_num,const int max_deque_length)
 {
     _port = port;
-    _statue.store(true); // 服务器默认开启
-    _epoll_wait_MS = -1; // epoll_wait 毫秒数
-    _listen_events =  EPOLLRDHUP | EPOLLET; // 监听事件,检测对端关闭事件和设置边缘触发模式
-    _client_events =  EPOLLONESHOT | EPOLLRDHUP | EPOLLET; // 监听事件,检测对端关闭事件和设置边缘触发模式,只读取一次事件后重新注册
+    _statue.store(true); // Start with the server enabled.
+    _epoll_wait_MS = -1; // Wait indefinitely for events.
+    _listen_events =  EPOLLRDHUP | EPOLLET; // Detect peer closure and use edge-triggered events.
+    _client_events =  EPOLLONESHOT | EPOLLRDHUP | EPOLLET; // Use one-shot edge-triggered client events and rearm after processing.
 
     HttpConnector::user_cnt=0;
 
     auto log = Log::GetInstance();
-    log->Init(max_deque_length); // 初始化日志
+    log->Init(max_deque_length); // Initialize logging.
 
     LOG_INFO("Log Init Success.");
 
     auto sqlpool = SQLPool::GetInstance();
-    sqlpool->Init(pool_host,pool_user,pool_password,pool_database,pool_port,pool_max_conn);// 初始化数据库连接池
+    sqlpool->Init(pool_host,pool_user,pool_password,pool_database,pool_port,pool_max_conn);// Initialize the database pool.
 
     unique_ptr<Epoller> NewEpolloer = std::make_unique<Epoller>();
-    _epoller = move(NewEpolloer); // epoll对象
+    _epoller = std::move(NewEpolloer); // Epoll instance.
 
     unique_ptr<ThreadPool> NewThreadPool = std::make_unique<ThreadPool>(max_thread_num);
-    _threadpool = move(NewThreadPool); // 线程池对象
+    _threadpool = std::move(NewThreadPool); // Worker pool.
 
 
     if(!_InitListenSocket())
     {
         LOG_FATAL("InitListenSocket error!");
         _statue = false;
+        throw std::runtime_error("Failed to initialize the listening socket");
     }
     // int id;
     // MYSQL* m;
-    // LOG_INFO("_sqlpool free conn:%d",_sqlpool->GetFreeConn());   
+    // LOG_INFO("_sqlpool free conn:%d",_sqlpool->GetFreeConn());
     // m=_sqlpool->GetConn(id);
     // LOG_INFO("_sqlpool free conn:%d",_sqlpool->GetFreeConn());
     // _sqlpool->ReleaseConn(id,m);
@@ -56,7 +57,7 @@ WebServer::WebServer(int port,int pool_max_conn,const char* pool_host,const char
 bool WebServer::_InitListenSocket()
 {
     int ret=0;
-    struct sockaddr_in listen_addr;
+    struct sockaddr_in listen_addr{};
     if( _port > 65535 || _port < 1024) {
         LOG_FATAL("Port: %d error!",  _port);
         return false;
@@ -65,37 +66,40 @@ bool WebServer::_InitListenSocket()
     listen_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     listen_addr.sin_port = htons(_port);
 
-    //设置优雅关闭连接
+    //Configure socket linger.
     struct linger Linger;
     Linger.l_onoff = 1;
     Linger.l_linger = 2;
 
-    //初始化监听socket
+    //Create the listening socket.
     _listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-    LISTEN_CLOSE(ret,"socket init error!")
+    LISTEN_CLOSE(_listen_fd,"socket init error!")
 
-    //设置优雅断开连接
+    //Apply socket linger.
     ret = setsockopt(_listen_fd, SOL_SOCKET, SO_LINGER, &Linger, sizeof(Linger));
     LISTEN_CLOSE(ret,"linger set error!")
 
     int optval = 1;
-    //设置端口复用
+    //Allow address reuse.
     ret = setsockopt(_listen_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
     LISTEN_CLOSE(ret,"set port reuse error!")
 
-    //绑定
-    ret = bind(_listen_fd, (struct sockaddr*)&listen_addr, sizeof(listen_addr));
+    //Bind the listening address.
+    ret = ::bind(_listen_fd, (struct sockaddr*)&listen_addr, sizeof(listen_addr));
     LISTEN_CLOSE(ret,"bind error!")
 
-    //监听
+    //Listen for clients.
     ret = listen(_listen_fd, 5);
     LISTEN_CLOSE(ret,"listen error!")
 
-    //将监听socket加入epoll
-    ret = _epoller->addFd(_listen_fd, _listen_events | EPOLLIN);
-    LISTEN_CLOSE(ret,"epoll add listen fd error!")
+    //Register the listener with epoll.
+    if (!_epoller->addFd(_listen_fd, _listen_events | EPOLLIN)) {
+        close(_listen_fd);
+        LOG_FATAL("epoll add listen fd error!");
+        return false;
+    }
 
-    //设置非阻塞
+    //Enable non-blocking I/O.
     _SetNoBlock(_listen_fd);
     //LOG_INFO("_listen_fd noblock set success!, _listen_fd = %d, NOBLOCK FLAG = %d" , _listen_fd,(fcntl(_listen_fd,F_GETFL) & O_NONBLOCK));
     LOG_INFO("listen_fd = %d, port = %d, init success.", _listen_fd, _port);
@@ -103,28 +107,29 @@ bool WebServer::_InitListenSocket()
     return true;
 }
 
-void WebServer::_HandleNewConnection() // 处理新连接
+void WebServer::_HandleNewConnection() // Accept new connections.
 {
     struct sockaddr_in client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
-    //由于是边缘触发所以要设置死循环来监听
+    //Drain pending connections for edge-triggered notification.
     while(true)
     {
         int client_fd = accept(_listen_fd,(struct sockaddr*)&client_addr, &client_addr_len);
         if(client_fd == -1)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // 所有连接已处理
+            // All pending connections have been accepted.
             return;
         } else {
             LOG_FATAL("accept error: %s",strerror(errno));
             return;
         }
-        } 
+        }
         else if(HttpConnector::user_cnt>=MAX_CLIENTS)
         {
             LOG_WARNING("clients are full!");
-            return;
+            close(client_fd);
+            continue;
         }
         _AddConnection(client_fd,client_addr);
     }
@@ -139,7 +144,7 @@ void WebServer::_AddConnection(int client_fd, sockaddr_in &client_addr)
     LOG_INFO("============Client[%d] in!============", _clients[client_fd].GetFd());
 }
 
-void WebServer::_CloseConnection(HttpConnector *client_connector) // 关闭连接
+void WebServer::_CloseConnection(HttpConnector *client_connector) // Close the connection.
 {
     assert(client_connector);
     _epoller->delFd(client_connector->GetFd());
@@ -147,9 +152,9 @@ void WebServer::_CloseConnection(HttpConnector *client_connector) // 关闭连�
     client_connector->Close();
 }
 
-void  WebServer::_Process(HttpConnector *client_connector)//处理业务逻辑
+void  WebServer::_Process(HttpConnector *client_connector)//Process the request.
 {
-    //由于设置了EPOll的EPOLLONESHOT,所以需要重新注册。
+    //Rearm EPOLLONESHOT after processing.
     if(client_connector->Process()){
         _epoller->modFd(client_connector->GetFd(), _client_events | EPOLLOUT);
     }else{
@@ -162,20 +167,24 @@ void  WebServer::_FunRead(HttpConnector *client_connector)
     LOG_INFO("_FunRead process start.")
     assert(client_connector);
     bool status = false;
-    //connector把数据读入它的缓冲区中，然后看状态
+    //Read into the connection buffer and check the result.
     auto ret = client_connector->Read(status);
-    if(ret == 0 && !status)
+    if(ret <= 0 && !status)
     {
         LOG_WARNING("read error, close connection");
         _CloseConnection(client_connector);
         return;
     }
-    //执行到这里说明读数据成功了，那么就把数据交给业务逻辑处理
-    _Process(client_connector);
+    //Process the successfully received request data.
+    try { _Process(client_connector); }
+    catch (const std::exception& error) {
+        LOG_WARNING("Request failed: %s", error.what());
+        _CloseConnection(client_connector);
+    }
     LOG_INFO("_FunRead ends.")
 }
 
-void WebServer::_HandleRead(HttpConnector *client_connector) // 处理读请求
+void WebServer::_HandleRead(HttpConnector *client_connector) // Schedule a read worker.
 {
     assert(client_connector);
     //LOG_INFO("handle read process.")
@@ -183,19 +192,19 @@ void WebServer::_HandleRead(HttpConnector *client_connector) // 处理读请求
     //_threadpool->AddTask([](){LOG_INFO("my mission fullfiled.");});
 }
 
-void  WebServer::_FunWrite(HttpConnector *client_connector)//处理写任务
+void  WebServer::_FunWrite(HttpConnector *client_connector)//Write pending response bytes.
 {
     assert(client_connector);
     bool status = true;
     long ret = -1;
     ret = client_connector->Write(status);
-    if(!client_connector->Writeable_Size()) // 传输完成
+    if(!client_connector->Writeable_Size()) // Response transmission completed.
     {
         _Process(client_connector);
     }
     else if(ret < 0)
     {
-        //在写入操作中，如果不能立即写入所有数据且操作设置为非阻塞模式，则返回 EWOULDBLOCK。
+        //Rearm writable notification when the socket would block.
         if(errno == EAGAIN || errno == EWOULDBLOCK)
         {
             _epoller->modFd(client_connector->GetFd(), _client_events | EPOLLOUT);
@@ -203,24 +212,25 @@ void  WebServer::_FunWrite(HttpConnector *client_connector)//处理写任务
         else
         {
             LOG_WARNING("write error, close connection");
+            _CloseConnection(client_connector);
         }
     }
-    //单次http连接是否需要中断
+    //Connection close handling.
     //_CloseConnection(client_connector);
 }
 
-void WebServer::_HandleWrite(HttpConnector *client_connector)//处理写请求
+void WebServer::_HandleWrite(HttpConnector *client_connector)//Schedule a write worker.
 {
     assert(client_connector);
     _threadpool->AddTask(std::bind(&WebServer::_FunWrite, this,client_connector));
-}   
+}
 
-void WebServer::Start()//主线程
+void WebServer::Start()//Main event loop.
 {
     if(_statue.load())
         LOG_INFO("===============WebServer Start===============");
-    //持续监听
-    
+    //Wait for events.
+
     while(_statue.load())
     {
         //LOG_INFO("Listening ......")
@@ -231,22 +241,22 @@ void WebServer::Start()//主线程
             auto events=_epoller->GetEvents(i);
             if(fd == _listen_fd)
             {
-                _HandleNewConnection(); // 处理新连接
+                _HandleNewConnection(); // Accept new connections.
             }
             else if(events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR))
             {
                 assert(_clients.count(fd) > 0);
-                _CloseConnection(&_clients[fd]); // 连接关闭
+                _CloseConnection(&_clients[fd]); // Close the client.
             }
             else if(events & EPOLLIN)
             {
-                //读请求
+                //Readable event.
                 assert(_clients.count(fd) > 0);
                 _HandleRead(&_clients[fd]);
             }
             else if(events & EPOLLOUT)
             {
-                //写请求
+                //Writable event.
                 assert(_clients.count(fd) > 0);
                 _HandleWrite(&_clients[fd]);
             }

@@ -2,7 +2,7 @@
 
 std::unordered_set<std::string> tasks = {"/login"};
 const char* CRLF = "\r\n";
-const std::string SRC_DIR = "../wwwroot";
+const std::string SRC_DIR = std::string(SOURCE_ROOT) + "/wwwroot";
 const std::string HOME_PAGE = "index.html";
 
 std::unordered_map<HTTP_CODE, std::string> statusDescriptions = {

@@ -1,0 +1,31 @@
+name: Build and HTTP smoke checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: local-test-password
+          MYSQL_DATABASE: webserver
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -plocal-test-password"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_USER: root
+      MYSQL_PASSWORD: local-test-password
+      MYSQL_DATABASE: webserver
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config default-libmysqlclient-dev default-mysql-client
+      - run: cmake -S . -B build && cmake --build build --parallel 2
+      - name: Create test-only credentials
+        env:
+          MYSQL_PWD: local-test-password
+        run: mysql -h 127.0.0.1 -u root webserver -e "CREATE TABLE user (username VARCHAR(50), passwd VARCHAR(50)); INSERT INTO user VALUES ('demo', 'correct');"
+      - run: python3 tests_smoke.py

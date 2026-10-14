@@ -23,12 +23,12 @@ class BlockDeque
     void push_back(const T& item);
     bool pop_front(T& item);
     void clear();
-    size_t size(); //返回队列中元素的个数
+    size_t size(); //Return the number of queued items.
     void Close();
 
     private:
     size_t _capability;
-    bool _status; //队列状态
+    bool _status; //Queue state.
     deque<T> _dq;
     mutex _mtx;
     condition_variable consumer;
@@ -53,26 +53,26 @@ bool BlockDeque<T>::full()
 template <class T>
 void BlockDeque<T>::push_back(const T& item)
 {
-    
-    //上线程锁
+
+    //Lock the queue.
     unique_lock<mutex> lock(_mtx);
-    //先判断队列是否是满的，再等待条件变量
+    //Wait until the queue has space.
     while( _dq.size() >= _capability)
     {
         producer.wait(lock);
     }
-    //这么写是不对的！因为full在也要上锁，但这个锁被push_back()占用了
+    //Do not call full() while holding the same non-recursive mutex.
     //producer.wait(lock,[this](){return !full();});
     _dq.push_back(item);
-    consumer.notify_one(); //唤醒一个消费者
+    consumer.notify_one(); //Wake one consumer.
 }
 
 template <class T>
 bool BlockDeque<T>::pop_front(T& item)
 {
-    //上线程锁
+    //Lock the queue.
     unique_lock<mutex> lock(_mtx);
-    //先判断队列是否是空的，再等待条件变量
+    //Wait until an item is available.
     while( _dq.empty())
     {
         consumer.wait(lock);
@@ -82,7 +82,7 @@ bool BlockDeque<T>::pop_front(T& item)
     }
     item=_dq.front();
     _dq.pop_front();
-    producer.notify_one(); //唤醒一个生产者
+    producer.notify_one(); //Wake one producer.
     return true;
 }
 
@@ -102,7 +102,7 @@ size_t BlockDeque<T>::size()
 
 template<class T>
 void BlockDeque<T>::Close() {
-    {   
+    {
         std::lock_guard<std::mutex> locker(_mtx);
         _dq.clear();
         _status=dq_close;
